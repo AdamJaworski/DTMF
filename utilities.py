@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import librosa
+import global_variables
 
 
 def display_freq(audio: np.ndarray, fs) -> None:
@@ -38,36 +39,6 @@ def normalize_audio(audio: np.ndarray, target_peak: float = 0.1) -> np.ndarray:
         return audio
     normalization_factor = target_peak / max_peak
     return audio * normalization_factor
-
-
-def segment_normalization(audio, fs, segment_length=1.0, target_peak=0.15):
-    """
-    Normalize audio in segments to achieve a more uniform volume level across its duration.
-
-    Parameters:
-    audio (numpy array): Input audio signal.
-    fs (int): Sampling rate of the audio signal.
-    segment_length (float): Length of each segment to normalize, in seconds.
-    target_peak (float): Target peak level for normalization.
-
-    Returns:
-    numpy array: The audio signal with normalized volume across segments.
-    """
-    samples_per_segment = int(segment_length * fs)
-    num_segments = int(np.ceil(len(audio) / samples_per_segment))
-    normalized_audio = np.zeros_like(audio)
-
-    for i in range(num_segments):
-        start_idx = i * samples_per_segment
-        end_idx = start_idx + samples_per_segment
-        segment = audio[start_idx:end_idx]
-        max_peak = np.abs(segment).max()
-        if max_peak == 0:
-            continue  # Avoid division by zero for silent segments
-        normalization_factor = target_peak / max_peak
-        normalized_audio[start_idx:end_idx] = segment * normalization_factor
-
-    return normalized_audio
 
 
 def estimate_noise_level(audio, frame_length=2048, hop_length=512):
@@ -123,90 +94,7 @@ def spectral_subtraction(signal, sr, n_fft=2048, hop_length=512):
     return denoised_signal
 
 
-def apply_noise_gate(audio, sr, threshold_dB=-40, decay_rate=0.01):
-    """
-    Apply a noise gate with exponential decay to an audio signal.
-
-    Parameters:
-    - audio: The input audio signal (numpy array).
-    - sr: Sampling rate of the audio signal.
-    - threshold_dB: The level (in dB) below which the signal starts to decay.
-    - decay_rate: The rate of exponential decay applied to the signal below the threshold.
-
-    Returns:
-    - The audio signal with the noise gate and decay applied.
-    """
-    # Convert threshold from dB to linear scale
-    threshold_linear = 10 ** (threshold_dB / 20)
-
-    # Initialize the output audio with the first sample
-    gated_audio = np.zeros_like(audio)
-
-    # Iterate through audio samples
-    for i, sample in enumerate(audio):
-        # Check if the sample's amplitude is below the threshold
-        if abs(sample) < threshold_linear:
-            if i == 0:
-                gated_audio[i] = sample * decay_rate
-            else:
-                # Apply exponential decay from the previous sample
-                gated_audio[i] = gated_audio[i - 1] * decay_rate
-        else:
-            # If above the threshold, pass the sample through
-            gated_audio[i] = sample
-
-    return gated_audio
-
-
-def noise_gate(audio_segment, threshold_dB=-20, fade_out_duration=50):
-    """
-    Applies a noise gate to an audio segment.
-
-    Parameters:
-    - audio_segment: pydub.AudioSegment to be processed.
-    - threshold_dB: The dB threshold below which the sound is gated.
-    - fade_out_duration: Duration in milliseconds to fade out to -110 dB and then to silence.
-
-    Returns:
-    - Processed pydub.AudioSegment.
-    """
-    # Convert threshold dB to amplitude
-    threshold_amplitude = audio_segment.dBFS - threshold_dB
-
-    # Get audio data as array
-    samples = np.array(audio_segment.get_array_of_samples())
-    sample_rate = audio_segment.frame_rate
-
-    # Compute the envelope using RMS
-    window_length = sample_rate // 10  # window length of 100 ms
-    envelope = np.array([
-        np.sqrt(np.mean(samples[i:i + window_length] ** 2))
-        for i in range(0, len(samples), window_length)
-    ])
-
-    # Normalize the envelope
-    envelope -= threshold_amplitude
-    envelope[envelope > 0] = 0
-    envelope = np.repeat(envelope, window_length)[:len(samples)]
-
-    # Apply gating
-    gated_samples = samples * (envelope <= 0)
-
-    # Apply fade out at threshold crossing points
-    for i in range(1, len(envelope)):
-        if envelope[i] == 0 and envelope[i - 1] != 0:
-            start = max(0, i * window_length - fade_out_duration)
-            end = i * window_length
-            fade_curve = np.linspace(1, 0, end - start)
-            gated_samples[start:end] *= fade_curve
-
-    # Create new audio segment from gated samples
-    gated_audio = audio_segment._spawn(gated_samples)
-
-    return gated_audio
-
-
-def noise_gate2(samples, sample_rate, threshold_dB=-20, fade_out_duration=50):
+def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHOLD, fade_out_duration=100):
     """
     Applies a noise gate to an audio array.
 
