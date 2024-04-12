@@ -14,8 +14,7 @@ def get_non_silent_chunks(audio: np.ndarray) -> list:
     :param audio: he input audio signal.
     :return: list of audio chunks
     """
-    #noise_lvl = utilities.estimate_noise_level(audio)
-    non_silent_intervals = librosa.effects.split(audio, top_db=45, hop_length=32, frame_length=128)
+    non_silent_intervals = librosa.effects.split(audio, top_db=48, hop_length=32, frame_length=128)
     audio_segments = []
     for start_idx, end_idx in non_silent_intervals:
         segment = audio[start_idx:end_idx]
