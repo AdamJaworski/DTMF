@@ -16,7 +16,7 @@ def get_non_silent_chunks(audio: np.ndarray) -> list:
     :param audio: he input audio signal.
     :return: list of audio chunks
     """
-    non_silent_intervals = librosa.effects.split(audio, top_db=-global_variables.NOISE_THRESHOLD - 1, hop_length=32, frame_length=128)
+    non_silent_intervals = librosa.effects.split(audio, top_db=-global_variables.NOISE_THRESHOLD - 1, hop_length=16, frame_length=64)
     audio_segments = []
     for start_idx, end_idx in non_silent_intervals:
         segment = audio[start_idx:end_idx]
@@ -33,12 +33,10 @@ def main(file: str) -> None:
     audio, fs = librosa.load(audio_path + file)
     audio = filters.select_freq(audio, fs)
 
-    while utilities.estimate_noise_level(audio) > -55:
-        audio = utilities.spectral_subtraction(audio, fs, 512, 128) #512 128 range(2)
+    while utilities.estimate_noise_level(audio) > global_variables.NOISE_THRESHOLD:
+        audio = utilities.spectral_subtraction(audio, fs, 128, 32) #512 128 range(2)
 
-
-    #audio = utilities.apply_noise_gate(audio, fs, threshold_dB=-48, decay_rate=0.0001)
-    audio = utilities.noise_gate(audio, fs)
+    audio = utilities.noise_gate(audio, fs, threshold_dB=global_variables.NOISE_THRESHOLD)
     # sd.play(audio, fs)
     # sd.wait()
     #

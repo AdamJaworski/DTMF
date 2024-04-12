@@ -26,7 +26,7 @@ def display_freq(audio: np.ndarray, fs) -> None:
     plt.show()
 
 
-def normalize_audio(audio: np.ndarray, target_peak: float = 0.1) -> np.ndarray:
+def normalize_audio(audio: np.ndarray, target_peak: float = 0.12) -> np.ndarray:
     """
     Normalize the audio signal so that its maximum peak is at the target peak level.
     :param audio: The input audio signal.
