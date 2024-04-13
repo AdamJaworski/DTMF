@@ -2,6 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 import global_variables
+import pathlib
+import sounddevice as sd
+from numba import njit
 
 
 def display_freq(audio: np.ndarray, fs) -> None:
@@ -26,7 +29,7 @@ def display_freq(audio: np.ndarray, fs) -> None:
     plt.show()
 
 
-def normalize_audio(audio: np.ndarray, target_peak: float = 0.12) -> np.ndarray:
+def normalize_audio(audio: np.ndarray, target_peak: float = 1) -> np.ndarray:
     """
     Normalize the audio signal so that its maximum peak is at the target peak level.
     :param audio: The input audio signal.
@@ -50,7 +53,7 @@ def estimate_noise_level(audio, frame_length=2048, hop_length=512):
     energy_db = librosa.power_to_db(energy, ref=np.max)
 
     # Assume the lower 10th percentile of energy frames are noise
-    noise_frames_db = np.percentile(energy_db, 15)
+    noise_frames_db = np.percentile(energy_db, 19.8)
 
     return noise_frames_db
 
@@ -68,14 +71,8 @@ def spectral_subtraction(signal, sr, n_fft=2048, hop_length=512):
     Returns:
     - Denoised audio signal (numpy array).
     """
-    # Calculate the number of samples corresponding to last 3 seconds
-    noise_samples = 3 * sr
+    noise_samples = 1 * sr
 
-    # Ensure the signal is long enough for this operation
-    if len(signal) < noise_samples:
-        raise ValueError("Signal is shorter than 3 seconds.")
-
-    # Use the last 3 seconds of the signal for noise estimation
     noise_segment = signal[-noise_samples:]
     noise_stft = librosa.stft(noise_segment, n_fft=n_fft, hop_length=hop_length)
     noise_estimation = np.mean(np.abs(noise_stft), axis=1, keepdims=True)
@@ -94,7 +91,7 @@ def spectral_subtraction(signal, sr, n_fft=2048, hop_length=512):
     return denoised_signal
 
 
-def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHOLD, fade_out_duration=100):
+def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHOLD, fade_out_duration=1):
     """
     Applies a noise gate to an audio array.
 
@@ -135,3 +132,122 @@ def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHO
                 samples[start:end] *= fade_curve
 
     return samples
+
+
+@njit()
+def noise_ceiling(samples, sample_rate, ceiling_dB=-10, fade_out_duration=1):
+    """
+    Applies a noise ceiling to an audio array, silencing parts that exceed a loudness threshold.
+
+    Parameters:
+    - samples: np.array, audio samples.
+    - sample_rate: int, sample rate of the audio.
+    - ceiling_dB: float, the dB ceiling above which the sound is silenced.
+    - fade_out_duration: int, duration in milliseconds to fade out the signal from the ceiling threshold to silence.
+
+    Returns:
+    - np.array, processed audio samples.
+    """
+    # Calculate the ceiling in linear scale
+    ceiling_amplitude = 10 ** (ceiling_dB / 20)
+
+    # Compute the envelope using RMS
+    window_length = int(sample_rate * 0.1)  # window length of 100 ms
+    envelope = np.array([
+        np.sqrt(np.mean(samples[i:i + window_length] ** 2))
+        for i in range(0, len(samples), window_length)
+    ])
+
+    # Determine where the envelope exceeds the ceiling
+    loud = envelope > ceiling_amplitude
+    loud = np.repeat(loud, window_length)[:len(samples)]
+
+    # Apply gating (silence the loud parts)
+    samples[loud] = 0
+
+    # Apply fade out at threshold crossing points
+    for i in range(1, len(envelope)):
+        if loud[i * window_length] and not loud[(i - 1) * window_length]:
+            start = max(0, i * window_length - fade_out_duration)
+            end = min(len(samples), i * window_length)
+            fade_samples = end - start
+            if fade_samples > 0:
+                fade_curve = np.linspace(1, 0, fade_samples)
+                samples[start:end] *= fade_curve
+
+    return samples
+
+
+def half_speed_keep_pitch(audio, frame_fft=2024, hop_len=512):
+    D = librosa.stft(audio, n_fft=frame_fft, hop_length=hop_len)
+    audio_stretched = librosa.phase_vocoder(D, rate=0.5, hop_length=hop_len)
+    audio_stretched = librosa.istft(audio_stretched, hop_length=hop_len)
+    desired_length = 2 * len(audio)
+    audio_stretched = librosa.util.fix_length(audio_stretched, size=desired_length)
+
+    return audio_stretched
+
+
+def plot_volume_over_time(audio, fs, hop_length=512, frame_length=2048, label=None):
+    title = 'Volume over Time '
+    if label is not None:
+        title += label
+
+    envelope = np.abs(audio)
+    envelope = librosa.util.frame(envelope, frame_length=frame_length, hop_length=hop_length).mean(axis=0)
+
+    times = librosa.frames_to_time(np.arange(len(envelope)), sr=fs, hop_length=hop_length, n_fft=frame_length)
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(times, envelope)
+    plt.title(title)
+    plt.xlabel('Time (s)')
+    plt.ylabel('Volume (Amplitude)')
+    plt.show()
+
+
+def plot_volume_over_time_db(audio, fs, hop_length=512, frame_length=2048):
+    amplitude = np.abs(audio)
+    energy = amplitude ** 2
+    energy = librosa.util.frame(energy, frame_length=frame_length, hop_length=hop_length).mean(axis=0)
+
+    ref_energy = np.max(energy)
+    energy_db = 10 * np.log10(np.maximum(energy, 1e-10) / ref_energy)  # Avoid log(0) by setting a floor at 1e-10
+
+    times = librosa.frames_to_time(np.arange(len(energy_db)), sr=fs, hop_length=hop_length)
+
+    # Plotting the volume over time in dB
+    plt.figure(figsize=(10, 4))
+    plt.plot(times, energy_db)
+    plt.title('Volume over Time (dB)')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Volume (dB)')
+    plt.show()
+
+
+def normalize_audio_over_time(audio, resolution=5, target=0.3):
+    """
+
+    :param audio:
+    :param resolution:
+    :param target:
+    :return:
+    """
+    epsilon = 1e-8
+    for i in range(1, resolution + 1):
+        audio_part = audio[int(len(audio) / resolution * (i - 1)):int(len(audio) / resolution * i)]
+        factor = target / (audio_part.max() + epsilon)
+        audio_part *= factor
+        audio[int(len(audio) / resolution * (i - 1)):int(len(audio) / resolution * i)] = audio_part
+    return audio
+
+
+def play(audio, fs) -> None:
+    """
+    Plays audio
+    :param audio: ndarray
+    :param fs: float
+    :return: None
+    """
+    sd.play(audio, fs)
+    sd.wait()
