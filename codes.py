@@ -1,4 +1,5 @@
 import numpy as np
+import global_variables
 
 keys = {
     (697, 1209): '1',
@@ -23,9 +24,9 @@ def get_freq(low_f, high_f) -> str:
     low_min = abs(low_v - low_f)
     high_min = abs(high_v - high_f)
 
-    if np.min(low_min) > 5:
+    if np.min(low_min) > global_variables.FREQ_TOLERANCE:
         return ''
-    if np.min(high_min) > 5:
+    if np.min(high_min) > global_variables.FREQ_TOLERANCE:
         return ''
 
     low_f = low_v[np.where(low_min == np.min(low_min))][0]

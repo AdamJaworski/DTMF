@@ -29,7 +29,7 @@ def display_freq(audio: np.ndarray, fs) -> None:
     plt.show()
 
 
-def normalize_audio(audio: np.ndarray, target_peak: float = 1) -> np.ndarray:
+def normalize_audio(audio: np.ndarray, target_peak: float = global_variables.TARGET_VOLUME) -> np.ndarray:
     """
     Normalize the audio signal so that its maximum peak is at the target peak level.
     :param audio: The input audio signal.
@@ -53,12 +53,12 @@ def estimate_noise_level(audio, frame_length=2048, hop_length=512):
     energy_db = librosa.power_to_db(energy, ref=np.max)
 
     # Assume the lower 10th percentile of energy frames are noise
-    noise_frames_db = np.percentile(energy_db, 19.8)
+    noise_frames_db = np.percentile(energy_db, 25)
 
     return noise_frames_db
 
 
-def spectral_subtraction(signal, sr, n_fft=2048, hop_length=512):
+def spectral_subtraction(signal, sr, n_fft=128, hop_length=global_variables.HOP):
     """
     Perform spectral subtraction by estimating noise from the last 3 seconds of the audio.
 
@@ -91,7 +91,7 @@ def spectral_subtraction(signal, sr, n_fft=2048, hop_length=512):
     return denoised_signal
 
 
-def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHOLD, fade_out_duration=1):
+def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHOLD):
     """
     Applies a noise gate to an audio array.
 
@@ -124,7 +124,7 @@ def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHO
     # Apply fade out at threshold crossing points
     for i in range(1, len(envelope)):
         if not quiet[i * window_length] and quiet[(i - 1) * window_length]:
-            start = max(0, i * window_length - fade_out_duration)
+            start = max(0, i * window_length - 1)
             end = min(len(samples), i * window_length)
             fade_samples = end - start
             if fade_samples > 0:
@@ -134,8 +134,7 @@ def noise_gate(samples, sample_rate, threshold_dB=global_variables.NOISE_THRESHO
     return samples
 
 
-@njit()
-def noise_ceiling(samples, sample_rate, ceiling_dB=-10, fade_out_duration=1):
+def noise_ceiling(samples, sample_rate, ceiling_dB=-(global_variables.TARGET_VOLUME * 30)):
     """
     Applies a noise ceiling to an audio array, silencing parts that exceed a loudness threshold.
 
@@ -168,7 +167,7 @@ def noise_ceiling(samples, sample_rate, ceiling_dB=-10, fade_out_duration=1):
     # Apply fade out at threshold crossing points
     for i in range(1, len(envelope)):
         if loud[i * window_length] and not loud[(i - 1) * window_length]:
-            start = max(0, i * window_length - fade_out_duration)
+            start = max(0, i * window_length - 1)
             end = min(len(samples), i * window_length)
             fade_samples = end - start
             if fade_samples > 0:
@@ -178,7 +177,7 @@ def noise_ceiling(samples, sample_rate, ceiling_dB=-10, fade_out_duration=1):
     return samples
 
 
-def half_speed_keep_pitch(audio, frame_fft=2024, hop_len=512):
+def half_speed_keep_pitch(audio, frame_fft=2024, hop_len=global_variables.HOP):
     D = librosa.stft(audio, n_fft=frame_fft, hop_length=hop_len)
     audio_stretched = librosa.phase_vocoder(D, rate=0.5, hop_length=hop_len)
     audio_stretched = librosa.istft(audio_stretched, hop_length=hop_len)
@@ -188,7 +187,7 @@ def half_speed_keep_pitch(audio, frame_fft=2024, hop_len=512):
     return audio_stretched
 
 
-def plot_volume_over_time(audio, fs, hop_length=512, frame_length=2048, label=None):
+def plot_volume_over_time(audio, fs, hop_length=global_variables.HOP, frame_length=2048, label=None):
     title = 'Volume over Time '
     if label is not None:
         title += label
@@ -206,7 +205,7 @@ def plot_volume_over_time(audio, fs, hop_length=512, frame_length=2048, label=No
     plt.show()
 
 
-def plot_volume_over_time_db(audio, fs, hop_length=512, frame_length=2048):
+def plot_volume_over_time_db(audio, fs, hop_length=global_variables.HOP, frame_length=2048):
     amplitude = np.abs(audio)
     energy = amplitude ** 2
     energy = librosa.util.frame(energy, frame_length=frame_length, hop_length=hop_length).mean(axis=0)
@@ -225,14 +224,15 @@ def plot_volume_over_time_db(audio, fs, hop_length=512, frame_length=2048):
     plt.show()
 
 
-def normalize_audio_over_time(audio, resolution=5, target=0.3):
+def normalize_audio_over_time(audio: np.ndarray, resolution: int, target: float = global_variables.TARGET_VOLUME) -> np.ndarray:
     """
-
-    :param audio:
-    :param resolution:
-    :param target:
-    :return:
+    Normalize audio parts in signal
+    :param audio: ndarray of audio signal
+    :param resolution: step for audio normalization
+    :param target: target volume, default {global_variables.TARGET_VOLUME}
+    :return: processed audio signal
     """
+    # avoid /0 division
     epsilon = 1e-8
     for i in range(1, resolution + 1):
         audio_part = audio[int(len(audio) / resolution * (i - 1)):int(len(audio) / resolution * i)]

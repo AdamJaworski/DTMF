@@ -1,6 +1,7 @@
 from scipy.signal import butter, filtfilt
 import numpy as np
 import utilities
+import global_variables
 
 order_ = 8
 gain_ = 2
@@ -36,8 +37,8 @@ def select_freq(audio, fs) -> np.ndarray:
     target_freq = [697, 770, 852, 941, 1209, 1336, 1477]
     audio_list  = []
     for freq in target_freq:
-        y = highpass_filter(audio, freq - 5, fs)
-        y = lowpass_filter(y, freq + 5, fs)
+        y = highpass_filter(audio, freq - global_variables.FREQ_TOLERANCE, fs)
+        y = lowpass_filter(y, freq + global_variables.FREQ_TOLERANCE, fs)
         y = utilities.normalize_audio(y)
         audio_list.append(y)
     output_audio = None
