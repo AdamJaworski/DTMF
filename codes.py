@@ -54,10 +54,8 @@ def get_freq(audio, fs) -> tuple:
 
 def get_code(audio, fs) -> str:
     high_f, low_f = get_freq(audio, fs)
-    if low_f and high_f:
-        return from_dict(low_f, high_f)
-    else:
-        return ''
+    code = from_dict(low_f, high_f)
+    return code
 
 
 def set_keys(audio: np.ndarray, fs: float, code: str):

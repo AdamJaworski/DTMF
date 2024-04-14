@@ -52,10 +52,9 @@ def main(file: str) -> None:
     for index in range(len(codes_list)):
         while not codes.set_keys(audio_chunks[index], fs, codes_list[index]):
             del audio_chunks[index]
-
-    audio_chunks = get_non_silent_chunks(audio, fs)
+    print(global_variables.new_keys)
     code = ''
-    for chunk in audio_chunks:
+    for chunk in audio_chunks[12:]:
         code += codes.get_code(chunk, fs)
     #print(code == '123456789*0#874995*888285837**40#*9915*351#043387301#149951161#978567136')
     print(code)
