@@ -52,8 +52,7 @@ def estimate_noise_level(audio, frame_length=2048, hop_length=512):
 
     energy_db = librosa.power_to_db(energy, ref=np.max)
 
-    # Assume the lower 10th percentile of energy frames are noise
-    noise_frames_db = np.percentile(energy_db, 25)
+    noise_frames_db = np.percentile(energy_db, 15)
 
     return noise_frames_db
 
